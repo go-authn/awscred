@@ -312,6 +312,18 @@ func sign(k crypto.Signer, alg string, input []byte) ([]byte, error) {
 
 // LoadKey reads a PEM private key: PKCS#8, PKCS#1 RSA or SEC1 EC.
 func LoadKey(file string) (crypto.Signer, error) {
+	// A private key readable by group or others is a key somebody else has.
+	// Unix modes only: on Windows Chmod means nothing, and the file belongs in
+	// the service account's profile or a directory with a restrictive ACL.
+	if os.PathSeparator == '/' {
+		st, err := os.Stat(file)
+		if err != nil {
+			return nil, err
+		}
+		if st.Mode().Perm()&0o077 != 0 {
+			return nil, fmt.Errorf("%s is readable by group or others (mode %04o): chmod 600 %s", file, st.Mode().Perm(), file)
+		}
+	}
 	b, err := os.ReadFile(file)
 	if err != nil {
 		return nil, err

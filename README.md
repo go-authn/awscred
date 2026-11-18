@@ -135,6 +135,9 @@ fileshare PR's tests use aws-sdk-go-v2 against the real endpoint.)
 - The cache holds temporary credentials, in a file created 0600 in a 0700
   directory (on Windows the profile directory's ACL is what keeps it private).
 - The private key never leaves the machine and is read from a file at each run.
+  On Unix a key file readable by group or others is refused (`chmod 600`). On
+  Windows modes mean nothing: keep the key in the service account's profile or a
+  directory whose ACL admits that account only.
 
 ## Keys in the Windows CNG or a TPM: not done
 
