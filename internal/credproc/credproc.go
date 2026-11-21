@@ -82,11 +82,32 @@ func (c *Config) now() time.Time {
 	return time.Now()
 }
 
+// client is the HTTP client with a redirect policy added: httpsOrLoopback looks
+// at the URL as configured, and a 307 would carry the signed assertion or the
+// web identity token, body included, to wherever the answer points. A copy, so
+// the caller's own client is not changed (go-authn/oidc's stillHTTPS does the
+// same job for its key set).
 func (c *Config) client() *http.Client {
+	var hc http.Client
 	if c.HTTP != nil {
-		return c.HTTP
+		hc = *c.HTTP
+	} else {
+		hc.Timeout = 30 * time.Second
 	}
-	return &http.Client{Timeout: 30 * time.Second}
+	next := hc.CheckRedirect
+	hc.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if err := httpsOrLoopback(req.URL.String()); err != nil {
+			return fmt.Errorf("a redirect leaves https: %w", err)
+		}
+		if next != nil {
+			return next(req, via)
+		}
+		if len(via) >= 10 {
+			return errors.New("stopped after 10 redirects")
+		}
+		return nil
+	}
+	return &hc
 }
 
 const maxBody = 1 << 20
