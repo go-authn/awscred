@@ -33,6 +33,15 @@ func readCache(p string) *Output {
 	if p == "" {
 		return nil
 	}
+	// The cache is trusted as this machine's credentials: only a file this user
+	// wrote, in a directory nobody else can write, qualifies.
+	if checkCacheDir(filepath.Dir(p)) != nil {
+		return nil
+	}
+	fi, err := os.Lstat(p)
+	if err != nil || checkCacheFile(fi) != nil {
+		return nil
+	}
 	b, err := os.ReadFile(p)
 	if err != nil {
 		return nil
@@ -48,6 +57,11 @@ func readCache(p string) *Output {
 // none, never half of one.
 func writeCache(p string, o *Output) error {
 	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+		return err
+	}
+	// MkdirAll leaves an existing directory as it is: do not put credentials
+	// where readCache would refuse them, or where others could swap them.
+	if err := checkCacheDir(filepath.Dir(p)); err != nil {
 		return err
 	}
 	b, _ := json.Marshal(o)

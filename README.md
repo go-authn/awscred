@@ -130,10 +130,16 @@ fileshare PR's tests use aws-sdk-go-v2 against the real endpoint.)
   errors carry the provider's error code and message, never an assertion or a
   credential. A failure prints nothing on stdout and exits 1.
 - The issuer, the token endpoint and the STS endpoint must be https (loopback
-  excepted). The discovery document must name the issuer it was fetched from
+  excepted), and so must every redirect they answer with: a 307 to http would
+  carry the signed assertion or the web identity token in the clear, so it is
+  refused. The discovery document must name the issuer it was fetched from
   (OpenID Connect Discovery 4.3).
 - The cache holds temporary credentials, in a file created 0600 in a 0700
   directory (on Windows the profile directory's ACL is what keeps it private).
+  On Unix a cache file is read back only if it is a regular file of this user,
+  not writable by group or others, in a directory not writable by group or
+  others (a sticky one such as /tmp excepted) and owned by this user; otherwise
+  it is ignored and credentials are fetched afresh.
 - The private key never leaves the machine and is read from a file at each run.
   On Unix a key file readable by group or others is refused (`chmod 600`). On
   Windows modes mean nothing: keep the key in the service account's profile or a
