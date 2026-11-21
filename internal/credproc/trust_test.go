@@ -57,6 +57,40 @@ func TestCacheTrust(t *testing.T) {
 	}
 }
 
+func TestCacheDirMustExistAndBeADirectory(t *testing.T) {
+	dir, p := cacheFixture(t, 0o700, 0o600)
+	if checkCacheDir(filepath.Join(dir, "absent")) == nil {
+		t.Error("a missing directory was accepted")
+	}
+	if checkCacheDir(p) == nil {
+		t.Error("a file was accepted as the cache directory")
+	}
+	if checkCacheDir(dir) != nil {
+		t.Error("a private directory was refused")
+	}
+}
+
+// Somebody else's file and directory, neither group/other-writable: the OWNER
+// is what makes them untrusted (root's /etc/hosts and /usr).
+func TestCacheOwnerMustBeThisUser(t *testing.T) {
+	if os.PathSeparator != '/' || os.Getuid() == 0 {
+		t.Skip("needs a non-root user on Unix")
+	}
+	fi, err := os.Stat("/etc/hosts")
+	if err != nil || fi.Mode().Perm()&0o022 != 0 {
+		t.Skip("no root-owned, unwritable /etc/hosts")
+	}
+	if checkCacheFile(fi) == nil {
+		t.Error("a file owned by root was trusted")
+	}
+	if fi, err := os.Stat("/usr"); err != nil || fi.Mode().Perm()&0o022 != 0 || fi.Mode()&os.ModeSticky != 0 {
+		t.Skip("no root-owned plain /usr")
+	}
+	if checkCacheDir("/usr") == nil {
+		t.Error("a directory owned by root was trusted")
+	}
+}
+
 func TestCacheSymlinkIsNotTrusted(t *testing.T) {
 	dir, p := cacheFixture(t, 0o700, 0o600)
 	link := filepath.Join(dir, "link.json")
