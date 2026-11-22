@@ -29,13 +29,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/go-authn/harden/redirect"
 )
 
 // Output is what credential_process prints: Version 1, and an Expiration so
@@ -98,14 +99,11 @@ func (c *Config) client() *http.Client {
 	}
 	next := hc.CheckRedirect
 	hc.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-		if err := httpsOrLoopback(req.URL.String()); err != nil {
-			return fmt.Errorf("a redirect leaves https: %w", err)
+		if err := redirect.CheckRedirect(req, via); err != nil {
+			return err
 		}
 		if next != nil {
 			return next(req, via)
-		}
-		if len(via) >= 10 {
-			return errors.New("stopped after 10 redirects")
 		}
 		return nil
 	}
@@ -158,23 +156,10 @@ func Credentials(ctx context.Context, c *Config) (*Output, error) {
 // httpsOrLoopback refuses a URL that would carry a signed assertion or a token
 // in the clear.
 func httpsOrLoopback(raw string) error {
-	u, err := url.Parse(raw)
-	if err != nil || u.Host == "" {
-		return fmt.Errorf("%q is not a URL", raw)
+	if err := redirect.HTTPSOrLoopback(raw); err != nil {
+		return fmt.Errorf("a token and its credentials are sent over https (or loopback): %w", err)
 	}
-	if u.Scheme == "https" {
-		return nil
-	}
-	if u.Scheme == "http" {
-		h := u.Hostname()
-		if h == "localhost" {
-			return nil
-		}
-		if ip := net.ParseIP(h); ip != nil && ip.IsLoopback() {
-			return nil
-		}
-	}
-	return fmt.Errorf("%s: a token and its credentials are sent over https (or loopback)", raw)
+	return nil
 }
 
 func (c *Config) discover(ctx context.Context) (string, error) {
