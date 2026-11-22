@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.3.1
+
+- The https-or-loopback rule and the redirect limit come from
+  `github.com/go-authn/harden/redirect`, shared with oidc, rp, saml and
+  wireguard. Loopback now also means `*.localhost`, in any letter case and with
+  a trailing dot; an IPv6 zone is refused; the error names the scheme and host,
+  no longer the whole URL (it may carry a secret). The 10-redirect limit now
+  also applies when the caller's own `CheckRedirect` is set, which still runs
+  after it.
+
 ## v0.3.0
 
 - Fixed (#8): `--duration` / `Config.Duration` was sent as
