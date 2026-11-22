@@ -120,7 +120,7 @@ fileshare PR's tests use aws-sdk-go-v2 against the real endpoint.)
 | `--sts` | the S3 endpoint (`POST /`); https, or loopback |
 | `--scope` | default `machine` |
 | `--session-name` | `RoleSessionName`, default the client ID |
-| `--duration` | `DurationSeconds` asked of STS; default the server's |
+| `--duration` | `DurationSeconds` asked of STS, 15m to 12h in whole seconds (otherwise refused); default the server's |
 | `--cache-dir`, `--no-cache` | where credentials are kept between runs |
 | `--refresh-before` | default 5m |
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.3.0
+
+- Fixed (#8): `--duration` / `Config.Duration` was sent as
+  `int(Duration.Seconds())`: 500ms became `DurationSeconds=0`, values outside
+  STS's range went out as they were, and a huge one went through a float to
+  int conversion that does not fit on 32 bits. STS takes 900 to 43200
+  (AWS API reference, AssumeRoleWithWebIdentity).
+- Changed (#8), behaviour: a duration other than zero (the server's default)
+  or 15 minutes to 12 hours in whole seconds is now refused before any request,
+  including a negative one, which used to be ignored.
+- Hardened (#8): `LoadKey` opens the key once and takes the mode and the bytes
+  from that descriptor, instead of a stat and a read by name. Not an
+  exploitable race (see the issue); the read is also bounded to 1 MiB.
+
 ## v0.2.0
 
 - Fixed (#6): redirects are held to https or loopback. A 307 from the token or
