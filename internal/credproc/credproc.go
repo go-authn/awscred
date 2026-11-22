@@ -33,6 +33,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -63,7 +64,8 @@ type Config struct {
 	Scope string
 	// SessionName is the RoleSessionName; default the client ID.
 	SessionName string
-	// Duration is DurationSeconds, when non-zero.
+	// Duration is DurationSeconds, when non-zero: 15 minutes to 12 hours, whole
+	// seconds; anything else is refused.
 	Duration time.Duration
 	// CacheDir keeps the credentials between runs; "" caches nothing.
 	CacheDir string
@@ -120,6 +122,9 @@ const maxBody = 1 << 20
 func Credentials(ctx context.Context, c *Config) (*Output, error) {
 	if c.Issuer == "" || c.Client == "" || c.Key == nil || c.STS == "" {
 		return nil, errors.New("an issuer, a client, a key and an STS endpoint are needed")
+	}
+	if _, err := durationSeconds(c.Duration); err != nil {
+		return nil, err
 	}
 	margin := c.RefreshBefore
 	if margin <= 0 {
@@ -336,8 +341,16 @@ func LoadKey(file string) (crypto.Signer, error) {
 	// A private key readable by group or others is a key somebody else has.
 	// Unix modes only: on Windows Chmod means nothing, and the file belongs in
 	// the service account's profile or a directory with a restrictive ACL.
+	//
+	// One open, then the mode of that descriptor and a read of that descriptor:
+	// a stat and a read by name could see two different files.
+	f, err := os.Open(file)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
 	if os.PathSeparator == '/' {
-		st, err := os.Stat(file)
+		st, err := f.Stat()
 		if err != nil {
 			return nil, err
 		}
@@ -345,7 +358,7 @@ func LoadKey(file string) (crypto.Signer, error) {
 			return nil, fmt.Errorf("%s is readable by group or others (mode %04o): chmod 600 %s", file, st.Mode().Perm(), file)
 		}
 	}
-	b, err := os.ReadFile(file)
+	b, err := io.ReadAll(io.LimitReader(f, maxBody))
 	if err != nil {
 		return nil, err
 	}
@@ -379,6 +392,30 @@ func LoadKey(file string) (crypto.Signer, error) {
 
 // ---- STS ----
 
+// STS DurationSeconds is an Integer from 900 to 43200 (AWS API reference,
+// AssumeRoleWithWebIdentity). Zero means "the server's default".
+const (
+	minSession = 900 * time.Second
+	maxSession = 43200 * time.Second
+)
+
+// durationSeconds is the DurationSeconds value for d, or "" for none. A value
+// outside the range, negative, or with a fractional second is an error, not
+// something to truncate: 500ms used to be sent as 0, and a huge one went
+// through int(float64), which does not fit an int on 32 bits.
+func durationSeconds(d time.Duration) (string, error) {
+	if d == 0 {
+		return "", nil
+	}
+	if d < minSession || d > maxSession {
+		return "", fmt.Errorf("duration %v: STS accepts %v to %v", d, minSession, maxSession)
+	}
+	if d%time.Second != 0 {
+		return "", fmt.Errorf("duration %v: a whole number of seconds is needed", d)
+	}
+	return strconv.FormatInt(int64(d/time.Second), 10), nil
+}
+
 type stsAnswer struct {
 	Key     string `xml:"AssumeRoleWithWebIdentityResult>Credentials>AccessKeyId"`
 	Secret  string `xml:"AssumeRoleWithWebIdentityResult>Credentials>SecretAccessKey"`
@@ -406,8 +443,12 @@ func (c *Config) assume(ctx context.Context, token string) (*Output, error) {
 		"RoleArn": {"arn:aws:iam::0:role/" + c.Client}, "RoleSessionName": {sessionName(name)},
 		"WebIdentityToken": {token},
 	}
-	if c.Duration > 0 {
-		form.Set("DurationSeconds", fmt.Sprint(int(c.Duration.Seconds())))
+	secs, err := durationSeconds(c.Duration)
+	if err != nil {
+		return nil, err
+	}
+	if secs != "" {
+		form.Set("DurationSeconds", secs)
 	}
 	u := strings.TrimRight(c.STS, "/") + "/"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, strings.NewReader(form.Encode()))
