@@ -3,7 +3,7 @@ module github.com/go-authn/awscred
 go 1.27.4
 
 require (
-	github.com/go-authn/harden v0.1.0
+	github.com/go-authn/harden v0.3.0
 	github.com/go-jose/go-jose/v4 v4.1.9
 	github.com/spf13/cobra v1.10.2
 )
